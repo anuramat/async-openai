@@ -1,7 +1,7 @@
 use crate::error::OpenAIError;
 pub use crate::types::{
-    CompletionTokensDetails, ImageDetail, PromptTokensDetails, ReasoningEffort,
-    ResponseFormatJsonSchema,
+    responses::SummaryPart, CompletionTokensDetails, ImageDetail, PromptTokensDetails,
+    ReasoningEffort, ResponseFormatJsonSchema,
 };
 use crate::types::{MCPListToolsTool, MCPTool};
 use derive_builder::Builder;
@@ -1667,7 +1667,7 @@ pub struct ReasoningItem {
     /// Unique identifier of the reasoning content.
     pub id: String,
     /// Reasoning summary content.
-    pub summary: Vec<Summary>,
+    pub summary: Vec<SummaryPart>,
     /// Reasoning text content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<ReasoningTextContent>>,
