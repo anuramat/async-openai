@@ -23,6 +23,7 @@ pub enum Role {
 #[serde(rename_all = "snake_case")]
 pub enum OutputStatus {
     InProgress,
+    #[serde(alias = "stop")]
     Completed,
     Incomplete,
 }
