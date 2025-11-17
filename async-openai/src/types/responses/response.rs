@@ -1658,6 +1658,8 @@ pub enum OutputContent {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReasoningTextContent {
+    /// OpenRouter extension (?); always "reasoning_text".
+    pub r#type: Option<String>,
     /// The reasoning text from the model.
     pub text: String,
 }
