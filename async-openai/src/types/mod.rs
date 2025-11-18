@@ -1,72 +1,39 @@
 //! Types used in OpenAI API requests and responses.
 //! These types are created from component schemas in the [OpenAPI spec](https://github.com/openai/openai-openapi)
-mod assistant;
-mod assistant_impls;
-mod assistant_stream;
+pub mod admin;
+pub mod assistants;
 pub mod audio;
-mod audit_log;
-mod batch;
-mod chat;
+pub mod batches;
+pub mod chat;
+pub mod chatkit;
 mod common;
 mod completion;
-mod containers;
-mod embedding;
-mod file;
-mod fine_tuning;
+pub mod containers;
+pub mod embeddings;
+pub mod evals;
+pub mod files;
+pub mod finetuning;
+pub mod graders;
 pub mod images;
-mod invites;
 mod logprob;
 mod mcp;
-mod message;
-mod model;
-mod moderation;
-mod project_api_key;
-mod project_service_account;
-mod project_users;
-mod projects;
+pub mod models;
+pub mod moderations;
 #[cfg_attr(docsrs, doc(cfg(feature = "realtime")))]
 #[cfg(feature = "realtime")]
 pub mod realtime;
 pub mod responses;
-mod run;
-mod step;
-mod thread;
-mod upload;
-mod users;
-mod vector_store;
-mod video;
+pub mod uploads;
+pub mod vectorstores;
+pub mod videos;
 #[cfg_attr(docsrs, doc(cfg(feature = "webhook")))]
 #[cfg(feature = "webhook")]
 pub mod webhooks;
 
-pub use assistant::*;
-pub use assistant_stream::*;
-pub use audit_log::*;
-pub use batch::*;
-pub use chat::*;
 pub use common::*;
 pub use completion::*;
-pub use containers::*;
-pub use embedding::*;
-pub use file::*;
-pub use fine_tuning::*;
-pub use invites::*;
 pub use logprob::*;
 pub use mcp::*;
-pub use message::*;
-pub use model::*;
-pub use moderation::*;
-pub use project_api_key::*;
-pub use project_service_account::*;
-pub use project_users::*;
-pub use projects::*;
-pub use run::*;
-pub use step::*;
-pub use thread::*;
-pub use upload::*;
-pub use users::*;
-pub use vector_store::*;
-pub use video::*;
 
 mod impls;
 use derive_builder::UninitializedFieldError;

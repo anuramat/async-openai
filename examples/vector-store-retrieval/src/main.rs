@@ -2,8 +2,8 @@ use std::error::Error;
 
 use async_openai::{
     types::{
-        CreateFileRequest, CreateVectorStoreRequest, FilePurpose, VectorStoreSearchRequest,
-        VectorStoreStatus,
+        files::{CreateFileRequest, FilePurpose},
+        vectorstores::{CreateVectorStoreRequest, VectorStoreSearchRequest, VectorStoreStatus},
     },
     Client,
 };

@@ -8,39 +8,45 @@ use crate::{
     error::OpenAIError,
     traits::AsyncTryFrom,
     types::{
+        assistants::CreateMessageRequestContent,
+        audio::{
+            AudioInput, AudioResponseFormat, CreateSpeechResponse, CreateTranscriptionRequest,
+            CreateTranslationRequest, TimestampGranularity, TranscriptionInclude,
+        },
         audio::{TranscriptionChunkingStrategy, TranslationResponseFormat},
+        chat::{
+            ChatCompletionFunctionCall, ChatCompletionFunctions, ChatCompletionNamedToolChoice,
+        },
+        chat::{
+            ChatCompletionRequestAssistantMessage, ChatCompletionRequestAssistantMessageContent,
+            ChatCompletionRequestDeveloperMessage, ChatCompletionRequestDeveloperMessageContent,
+            ChatCompletionRequestFunctionMessage, ChatCompletionRequestMessage,
+            ChatCompletionRequestMessageContentPartAudio,
+            ChatCompletionRequestMessageContentPartImage,
+            ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
+            ChatCompletionRequestSystemMessageContent, ChatCompletionRequestToolMessage,
+            ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessage,
+            ChatCompletionRequestUserMessageContent, ChatCompletionRequestUserMessageContentPart,
+            FunctionName, ImageUrl, Prompt, Role, StopConfiguration,
+        },
+        containers::CreateContainerFileRequest,
+        embeddings::EmbeddingInput,
+        files::{CreateFileRequest, FileExpirationAfterAnchor, FileInput, FilePurpose},
+        images::{
+            CreateImageEditRequest, CreateImageVariationRequest, DallE2ImageSize, Image,
+            ImageInput, ImageModel, ImageResponseFormat, ImageSize, ImagesResponse,
+        },
         images::{ImageBackground, ImageEditInput, ImageOutputFormat, ImageQuality, InputFidelity},
-        InputSource, VideoSize,
+        moderations::ModerationInput,
+        responses::EasyInputContent,
+        uploads::AddUploadPartRequest,
+        videos::{CreateVideoRequest, VideoSize},
+        InputSource,
     },
     util::{create_all_dir, create_file_part},
 };
 
 use bytes::Bytes;
-
-use super::{
-    audio::{
-        AudioInput, AudioResponseFormat, CreateSpeechResponse, CreateTranscriptionRequest,
-        CreateTranslationRequest, TimestampGranularity, TranscriptionInclude,
-    },
-    images::{
-        CreateImageEditRequest, CreateImageVariationRequest, DallE2ImageSize, Image, ImageInput,
-        ImageModel, ImageResponseFormat, ImageSize, ImagesResponse,
-    },
-    responses::{EasyInputContent, Role as ResponsesRole},
-    AddUploadPartRequest, ChatCompletionFunctionCall, ChatCompletionFunctions,
-    ChatCompletionNamedToolChoice, ChatCompletionRequestAssistantMessage,
-    ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestDeveloperMessage,
-    ChatCompletionRequestDeveloperMessageContent, ChatCompletionRequestFunctionMessage,
-    ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartAudio,
-    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
-    ChatCompletionRequestSystemMessage, ChatCompletionRequestSystemMessageContent,
-    ChatCompletionRequestToolMessage, ChatCompletionRequestToolMessageContent,
-    ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart, ChatCompletionToolChoiceOption,
-    CreateContainerFileRequest, CreateFileRequest, CreateMessageRequestContent, CreateVideoRequest,
-    EmbeddingInput, FileExpiresAfterAnchor, FileInput, FilePurpose, FunctionName, ImageUrl,
-    ModerationInput, Prompt, Role, Stop,
-};
 
 /// for `impl_from!(T, Enum)`, implements
 /// - `From<T>`
@@ -94,10 +100,10 @@ impl_from!(&str, Prompt);
 impl_from!(String, Prompt);
 impl_from!(&String, Prompt);
 
-// From String "family" to Stop
-impl_from!(&str, Stop);
-impl_from!(String, Stop);
-impl_from!(&String, Stop);
+// From String "family" to StopConfiguration
+impl_from!(&str, StopConfiguration);
+impl_from!(String, StopConfiguration);
+impl_from!(&String, StopConfiguration);
 
 // From String "family" to ModerationInput
 impl_from!(&str, ModerationInput);
@@ -217,50 +223,50 @@ impl From<PathBuf> for ImageEditInput {
 // Arrays of path-like values
 impl<const N: usize> From<[&str; N]> for ImageEditInput {
     fn from(value: [&str; N]) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl<const N: usize> From<[String; N]> for ImageEditInput {
     fn from(value: [String; N]) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl<const N: usize> From<[&Path; N]> for ImageEditInput {
     fn from(value: [&Path; N]) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl<const N: usize> From<[PathBuf; N]> for ImageEditInput {
     fn from(value: [PathBuf; N]) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 // Vectors of path-like values
 impl<'a> From<Vec<&'a str>> for ImageEditInput {
     fn from(value: Vec<&'a str>) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl From<Vec<String>> for ImageEditInput {
     fn from(value: Vec<String>) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl From<Vec<&Path>> for ImageEditInput {
     fn from(value: Vec<&Path>) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
 impl From<Vec<PathBuf>> for ImageEditInput {
     fn from(value: Vec<PathBuf>) -> Self {
-        Self::Images(value.into_iter().map(|v| ImageInput::from(v)).collect())
+        Self::Images(value.into_iter().map(ImageInput::from).collect())
     }
 }
 
@@ -483,12 +489,14 @@ impl Display for FilePurpose {
                 Self::Batch => "batch",
                 Self::FineTune => "fine-tune",
                 Self::Vision => "vision",
+                Self::UserData => "user_data",
+                Self::Evals => "evals",
             }
         )
     }
 }
 
-impl Display for FileExpiresAfterAnchor {
+impl Display for FileExpirationAfterAnchor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -718,7 +726,6 @@ impl From<String> for FunctionName {
 impl From<&str> for ChatCompletionNamedToolChoice {
     fn from(value: &str) -> Self {
         Self {
-            r#type: super::ChatCompletionToolType::Function,
             function: value.into(),
         }
     }
@@ -727,28 +734,7 @@ impl From<&str> for ChatCompletionNamedToolChoice {
 impl From<String> for ChatCompletionNamedToolChoice {
     fn from(value: String) -> Self {
         Self {
-            r#type: super::ChatCompletionToolType::Function,
             function: value.into(),
-        }
-    }
-}
-
-impl From<&str> for ChatCompletionToolChoiceOption {
-    fn from(value: &str) -> Self {
-        match value {
-            "auto" => Self::Auto,
-            "none" => Self::None,
-            _ => Self::Named(value.into()),
-        }
-    }
-}
-
-impl From<String> for ChatCompletionToolChoiceOption {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "auto" => Self::Auto,
-            "none" => Self::None,
-            _ => Self::Named(value.into()),
         }
     }
 }
@@ -1333,17 +1319,44 @@ impl AsyncTryFrom<CreateVideoRequest> for reqwest::multipart::Form {
     }
 }
 
+#[cfg(feature = "realtime")]
+impl AsyncTryFrom<crate::types::realtime::RealtimeCallCreateRequest> for reqwest::multipart::Form {
+    type Error = OpenAIError;
+
+    async fn try_from(
+        request: crate::types::realtime::RealtimeCallCreateRequest,
+    ) -> Result<Self, Self::Error> {
+        use reqwest::multipart::Part;
+
+        // Create SDP part with content type application/sdp
+        let sdp_part = Part::text(request.sdp)
+            .mime_str("application/sdp")
+            .map_err(|e| OpenAIError::InvalidArgument(format!("Invalid content type: {}", e)))?;
+
+        let mut form = reqwest::multipart::Form::new().part("sdp", sdp_part);
+
+        // Add session as JSON if present
+        if let Some(session) = request.session {
+            let session_json = serde_json::to_string(&session).map_err(|e| {
+                OpenAIError::InvalidArgument(format!("Failed to serialize session: {}", e))
+            })?;
+            let session_part = Part::text(session_json)
+                .mime_str("application/json")
+                .map_err(|e| {
+                    OpenAIError::InvalidArgument(format!("Invalid content type: {}", e))
+                })?;
+            form = form.part("session", session_part);
+        }
+
+        Ok(form)
+    }
+}
+
 // end: types to multipart form
 
 impl Default for EasyInputContent {
     fn default() -> Self {
         Self::Text("".to_string())
-    }
-}
-
-impl Default for ResponsesRole {
-    fn default() -> Self {
-        Self::User
     }
 }
 

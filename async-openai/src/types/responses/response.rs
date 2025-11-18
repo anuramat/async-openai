@@ -1,7 +1,7 @@
 use crate::error::OpenAIError;
-pub use crate::types::{
-    responses::SummaryPart, CompletionTokensDetails, ImageDetail, PromptTokensDetails,
-    ReasoningEffort, ResponseFormatJsonSchema,
+pub use crate::types::chat::{
+    CompletionTokensDetails, ImageDetail, PromptTokensDetails, ReasoningEffort,
+    ResponseFormatJsonSchema,
 };
 use crate::types::{MCPListToolsTool, MCPTool};
 use derive_builder::Builder;
@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Role of messages in the API.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
+    #[default]
     User,
     Assistant,
     System,
@@ -105,6 +106,18 @@ pub enum Item {
 
     /// The output of a local shell tool call.
     LocalShellCallOutput(LocalShellToolCallOutput),
+
+    /// A tool representing a request to execute one or more shell commands.
+    FunctionShellCall(FunctionShellCallItemParam),
+
+    /// The streamed output items emitted by a function shell tool call.
+    FunctionShellCallOutput(FunctionShellCallOutputItemParam),
+
+    /// A tool call representing a request to create, delete, or update files using diff patches.
+    ApplyPatchCall(ApplyPatchToolCallItemParam),
+
+    /// The streamed output emitted by an apply patch tool call.
+    ApplyPatchCallOutput(ApplyPatchToolCallOutputItemParam),
 
     /// A list of tools available on an MCP server.
     McpListTools(MCPListTools),
@@ -667,6 +680,12 @@ pub struct CreateResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
 
+    /// The retention policy for the prompt cache. Set to `24h` to enable extended prompt caching,
+    /// which keeps cached prefixes active for longer, up to a maximum of 24 hours. [Learn
+    /// more](https://platform.openai.com/docs/guides/prompt-caching#prompt-cache-retention).    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<PromptCacheRetention>,
+
     /// **gpt-5 and o-series models only**
     /// Configuration options for [reasoning models](https://platform.openai.com/docs/guides/reasoning).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -862,6 +881,15 @@ pub enum ReasoningSummary {
     Detailed,
 }
 
+/// The retention policy for the prompt cache.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub enum PromptCacheRetention {
+    #[serde(rename = "in-memory")]
+    InMemory,
+    #[serde(rename = "24h")]
+    Hours24,
+}
+
 /// Configuration for text response format.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ResponseTextParam {
@@ -931,6 +959,8 @@ pub enum Tool {
     ImageGeneration(ImageGenTool),
     /// A tool that allows the model to execute shell commands in a local environment.
     LocalShell,
+    /// A tool that allows the model to execute shell commands.
+    Shell,
     /// A custom tool that processes input using a specified format. Learn more about   [custom
     /// tools](https://platform.openai.com/docs/guides/function-calling#custom-tools)
     Custom(CustomToolParam),
@@ -940,6 +970,8 @@ pub enum Tool {
     /// type: web_search_preview_2025_03_11
     #[serde(rename = "web_search_preview_2025_03_11")]
     WebSearchPreview20250311(WebSearchTool),
+    /// Allows the assistant to create, delete, or update files using unified diffs.
+    ApplyPatch,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default, Builder)]
@@ -1395,7 +1427,7 @@ pub struct ToolChoiceAllowed {
     /// message.
     ///
     /// `required` requires the model to call one or more of the allowed tools.
-    mode: ToolChoiceAllowedMode,
+    pub mode: ToolChoiceAllowedMode,
     /// A list of tool definitions that the model should be allowed to call.
     ///
     /// For the Responses API, the list of tool definitions might look like:
@@ -1406,7 +1438,7 @@ pub struct ToolChoiceAllowed {
     ///   { "type": "image_generation" }
     /// ]
     /// ```
-    tools: Vec<serde_json::Value>,
+    pub tools: Vec<serde_json::Value>,
 }
 
 /// The type of hosted tool the model should to use. Learn more about
@@ -1455,6 +1487,12 @@ pub enum ToolChoiceParam {
 
     /// Use this option to force the model to call a custom tool.
     Custom(ToolChoiceCustom),
+
+    /// Forces the model to call the apply_patch tool when executing a tool call.
+    ApplyPatch,
+
+    /// Forces the model to call the function shell tool when a tool call is required.
+    Shell,
 
     /// Indicates that the model should use a built-in tool to generate a response.
     /// [Learn more about built-in tools](https://platform.openai.com/docs/guides/tools).
@@ -1689,6 +1727,12 @@ pub struct ReasoningItem {
 pub struct Summary {
     /// A summary of the reasoning output from the model so far.
     pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SummaryPart {
+    SummaryText(Summary),
 }
 
 /// File search tool call output.
@@ -2061,6 +2105,325 @@ pub struct LocalShellExecAction {
     pub working_directory: Option<String>,
 }
 
+/// Commands and limits describing how to run the function shell tool call.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellActionParam {
+    /// Ordered shell commands for the execution environment to run.
+    pub commands: Vec<String>,
+    /// Maximum wall-clock time in milliseconds to allow the shell commands to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+    /// Maximum number of UTF-8 characters to capture from combined stdout and stderr output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_length: Option<u64>,
+}
+
+/// Status values reported for function shell tool calls.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FunctionShellCallItemStatus {
+    InProgress,
+    Completed,
+    Incomplete,
+}
+
+/// A tool representing a request to execute one or more shell commands.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallItemParam {
+    /// The unique ID of the function shell tool call. Populated when this item is returned via API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The unique ID of the function shell tool call generated by the model.
+    pub call_id: String,
+    /// The shell commands and limits that describe how to run the tool call.
+    pub action: FunctionShellActionParam,
+    /// The status of the shell call. One of `in_progress`, `completed`, or `incomplete`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<FunctionShellCallItemStatus>,
+}
+
+/// Indicates that the shell commands finished and returned an exit code.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutputExitOutcomeParam {
+    /// The exit code returned by the shell process.
+    pub exit_code: i32,
+}
+
+/// The exit or timeout outcome associated with this chunk.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FunctionShellCallOutputOutcomeParam {
+    Timeout,
+    Exit(FunctionShellCallOutputExitOutcomeParam),
+}
+
+/// Captured stdout and stderr for a portion of a function shell tool call output.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutputContentParam {
+    /// Captured stdout output for this chunk of the shell call.
+    pub stdout: String,
+    /// Captured stderr output for this chunk of the shell call.
+    pub stderr: String,
+    /// The exit or timeout outcome associated with this chunk.
+    pub outcome: FunctionShellCallOutputOutcomeParam,
+}
+
+/// The streamed output items emitted by a function shell tool call.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutputItemParam {
+    /// The unique ID of the function shell tool call output. Populated when this item is returned via API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The unique ID of the function shell tool call generated by the model.
+    pub call_id: String,
+    /// Captured chunks of stdout and stderr output, along with their associated outcomes.
+    pub output: Vec<FunctionShellCallOutputContentParam>,
+    /// The maximum number of UTF-8 characters captured for this shell call's combined output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_length: Option<u64>,
+}
+
+/// Status values reported for apply_patch tool calls.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyPatchCallStatusParam {
+    InProgress,
+    Completed,
+}
+
+/// Instruction for creating a new file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchCreateFileOperationParam {
+    /// Path of the file to create relative to the workspace root.
+    pub path: String,
+    /// Unified diff content to apply when creating the file.
+    pub diff: String,
+}
+
+/// Instruction for deleting an existing file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchDeleteFileOperationParam {
+    /// Path of the file to delete relative to the workspace root.
+    pub path: String,
+}
+
+/// Instruction for updating an existing file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchUpdateFileOperationParam {
+    /// Path of the file to update relative to the workspace root.
+    pub path: String,
+    /// Unified diff content to apply to the existing file.
+    pub diff: String,
+}
+
+/// One of the create_file, delete_file, or update_file operations supplied to the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ApplyPatchOperationParam {
+    CreateFile(ApplyPatchCreateFileOperationParam),
+    DeleteFile(ApplyPatchDeleteFileOperationParam),
+    UpdateFile(ApplyPatchUpdateFileOperationParam),
+}
+
+/// A tool call representing a request to create, delete, or update files using diff patches.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchToolCallItemParam {
+    /// The unique ID of the apply patch tool call. Populated when this item is returned via API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The unique ID of the apply patch tool call generated by the model.
+    pub call_id: String,
+    /// The status of the apply patch tool call. One of `in_progress` or `completed`.
+    pub status: ApplyPatchCallStatusParam,
+    /// The specific create, delete, or update instruction for the apply_patch tool call.
+    pub operation: ApplyPatchOperationParam,
+}
+
+/// Outcome values reported for apply_patch tool call outputs.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyPatchCallOutputStatusParam {
+    Completed,
+    Failed,
+}
+
+/// The streamed output emitted by an apply patch tool call.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchToolCallOutputItemParam {
+    /// The unique ID of the apply patch tool call output. Populated when this item is returned via API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The unique ID of the apply patch tool call generated by the model.
+    pub call_id: String,
+    /// The status of the apply patch tool call output. One of `completed` or `failed`.
+    pub status: ApplyPatchCallOutputStatusParam,
+    /// Optional human-readable log text from the apply patch tool (e.g., patch results or errors).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+}
+
+/// Shell exec action
+/// Execute a shell command.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellAction {
+    /// A list of commands to run.
+    pub commands: Vec<String>,
+    /// Optional timeout in milliseconds for the commands.
+    pub timeout_ms: Option<u64>,
+    /// Optional maximum number of characters to return from each command.
+    pub max_output_length: Option<u64>,
+}
+
+/// Status values reported for function shell tool calls.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalShellCallStatus {
+    InProgress,
+    Completed,
+    Incomplete,
+}
+
+/// A tool call that executes one or more shell commands in a managed environment.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCall {
+    /// The unique ID of the function shell tool call. Populated when this item is returned via API.
+    pub id: String,
+    /// The unique ID of the function shell tool call generated by the model.
+    pub call_id: String,
+    /// The shell commands and limits that describe how to run the tool call.
+    pub action: FunctionShellAction,
+    /// The status of the shell call. One of `in_progress`, `completed`, or `incomplete`.
+    pub status: LocalShellCallStatus,
+    /// The ID of the entity that created this tool call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+/// The content of a shell call output.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutputContent {
+    pub stdout: String,
+    pub stderr: String,
+    /// Represents either an exit outcome (with an exit code) or a timeout outcome for a shell call output chunk.
+    #[serde(flatten)]
+    pub outcome: FunctionShellCallOutputOutcome,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+/// Function shell call outcome
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FunctionShellCallOutputOutcome {
+    Timeout,
+    Exit(FunctionShellCallOutputExitOutcome),
+}
+
+/// Indicates that the shell commands finished and returned an exit code.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutputExitOutcome {
+    /// Exit code from the shell process.
+    pub exit_code: i32,
+}
+
+/// The output of a shell tool call.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct FunctionShellCallOutput {
+    /// The unique ID of the shell call output. Populated when this item is returned via API.
+    pub id: String,
+    /// The unique ID of the shell tool call generated by the model.
+    pub call_id: String,
+    /// An array of shell call output contents
+    pub output: Vec<FunctionShellCallOutputContent>,
+    /// The maximum length of the shell command output. This is generated by the model and should be
+    /// passed back with the raw output.
+    pub max_output_length: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+/// Status values reported for apply_patch tool calls.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyPatchCallStatus {
+    InProgress,
+    Completed,
+}
+
+/// Instruction describing how to create a file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchCreateFileOperation {
+    /// Path of the file to create.
+    pub path: String,
+    /// Diff to apply.
+    pub diff: String,
+}
+
+/// Instruction describing how to delete a file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchDeleteFileOperation {
+    /// Path of the file to delete.
+    pub path: String,
+}
+
+/// Instruction describing how to update a file via the apply_patch tool.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchUpdateFileOperation {
+    /// Path of the file to update.
+    pub path: String,
+    /// Diff to apply.
+    pub diff: String,
+}
+
+/// One of the create_file, delete_file, or update_file operations applied via apply_patch.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ApplyPatchOperation {
+    CreateFile(ApplyPatchCreateFileOperation),
+    DeleteFile(ApplyPatchDeleteFileOperation),
+    UpdateFile(ApplyPatchUpdateFileOperation),
+}
+
+/// A tool call that applies file diffs by creating, deleting, or updating files.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchToolCall {
+    /// The unique ID of the apply patch tool call. Populated when this item is returned via API.
+    pub id: String,
+    /// The unique ID of the apply patch tool call generated by the model.
+    pub call_id: String,
+    /// The status of the apply patch tool call. One of `in_progress` or `completed`.
+    pub status: ApplyPatchCallStatus,
+    /// One of the create_file, delete_file, or update_file operations applied via apply_patch.
+    pub operation: ApplyPatchOperation,
+    /// The ID of the entity that created this tool call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+/// Outcome values reported for apply_patch tool call outputs.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplyPatchCallOutputStatus {
+    Completed,
+    Failed,
+}
+
+/// The output emitted by an apply patch tool call.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ApplyPatchToolCallOutput {
+    /// The unique ID of the apply patch tool call output. Populated when this item is returned via API.
+    pub id: String,
+    /// The unique ID of the apply patch tool call generated by the model.
+    pub call_id: String,
+    /// The status of the apply patch tool call output. One of `completed` or `failed`.
+    pub status: ApplyPatchCallOutputStatus,
+    /// Optional textual output returned by the apply patch tool.
+    pub output: Option<String>,
+    /// The ID of the entity that created this tool call output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
 /// Output of an MCP server tool invocation.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MCPToolCall {
@@ -2253,6 +2616,12 @@ pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
 
+    /// The retention policy for the prompt cache. Set to `24h` to enable extended prompt caching,
+    /// which keeps cached prefixes active for longer, up to a maximum of 24 hours. [Learn
+    /// more](https://platform.openai.com/docs/guides/prompt-caching#prompt-cache-retention).    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<PromptCacheRetention>,
+
     /// **gpt-5 and o-series models only**
     /// Configuration options for [reasoning models](https://platform.openai.com/docs/guides/reasoning).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2424,6 +2793,14 @@ pub enum OutputItem {
     CodeInterpreterCall(CodeInterpreterToolCall),
     /// A tool call to run a command on the local shell.
     LocalShellCall(LocalShellToolCall),
+    /// A tool call that executes one or more shell commands in a managed environment.
+    ShellCall(FunctionShellCall),
+    /// The output of a shell tool call.
+    ShellCallOutput(FunctionShellCallOutput),
+    /// A tool call that applies file diffs by creating, deleting, or updating files.
+    ApplyPatchCall(ApplyPatchToolCall),
+    /// The output emitted by an apply patch tool call.
+    ApplyPatchCallOutput(ApplyPatchToolCallOutput),
     /// An invocation of a tool on an MCP server.
     McpCall(MCPToolCall),
     /// A list of tools available on an MCP server.
@@ -2474,6 +2851,10 @@ pub enum ItemResourceItem {
     CodeInterpreterCall(CodeInterpreterToolCall),
     LocalShellCall(LocalShellToolCall),
     LocalShellCallOutput(LocalShellToolCallOutput),
+    ShellCall(FunctionShellCallItemParam),
+    ShellCallOutput(FunctionShellCallOutputItemParam),
+    ApplyPatchCall(ApplyPatchToolCallItemParam),
+    ApplyPatchCallOutput(ApplyPatchToolCallOutputItemParam),
     McpListTools(MCPListTools),
     McpApprovalRequest(MCPApprovalRequest),
     McpApprovalResponse(MCPApprovalResponse),
