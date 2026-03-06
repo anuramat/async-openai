@@ -204,7 +204,7 @@ pub struct ResponseContentPartAddedEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub part: OutputContent,
 }
 
@@ -213,7 +213,7 @@ pub struct ResponseContentPartDoneEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub part: OutputContent,
 }
 
@@ -222,7 +222,7 @@ pub struct ResponseTextDeltaEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub delta: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<Vec<ResponseLogProb>>,
@@ -233,7 +233,7 @@ pub struct ResponseTextDoneEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub text: String,
     pub logprobs: Option<Vec<ResponseLogProb>>,
 }
@@ -243,7 +243,7 @@ pub struct ResponseRefusalDeltaEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub delta: String,
 }
 
@@ -252,7 +252,7 @@ pub struct ResponseRefusalDoneEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub refusal: String,
 }
 
@@ -357,7 +357,7 @@ pub struct ResponseReasoningTextDeltaEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub delta: String,
 }
 
@@ -366,7 +366,7 @@ pub struct ResponseReasoningTextDoneEvent {
     pub sequence_number: Option<u64>,
     pub item_id: String,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub text: String,
 }
 
@@ -499,7 +499,7 @@ pub struct ResponseCodeInterpreterCallCodeDoneEvent {
 pub struct ResponseOutputTextAnnotationAddedEvent {
     pub sequence_number: Option<u64>,
     pub output_index: Option<u32>,
-    pub content_index: u32,
+    pub content_index: Option<u32>,
     pub annotation_index: u32,
     pub item_id: String,
     pub annotation: serde_json::Value,
