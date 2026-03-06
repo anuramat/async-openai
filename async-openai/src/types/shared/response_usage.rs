@@ -19,11 +19,11 @@ pub struct ResponseUsage {
     /// The number of input tokens.
     pub input_tokens: u32,
     /// A detailed breakdown of the input tokens.
-    pub input_tokens_details: InputTokenDetails,
+    pub input_tokens_details: Option<InputTokenDetails>,
     /// The number of output tokens.
     pub output_tokens: u32,
     /// A detailed breakdown of the output tokens.
-    pub output_tokens_details: OutputTokenDetails,
+    pub output_tokens_details: Option<OutputTokenDetails>,
     /// The total number of tokens used.
     pub total_tokens: u32,
 }
